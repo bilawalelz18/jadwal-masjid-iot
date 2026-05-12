@@ -18,7 +18,7 @@
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-surface-container-high/30 dark:bg-white/5 transition-colors duration-300">
-                            <th class="px-8 py-6 text-[11px] font-bold text-secondary dark:text-gray-400 tracking-widest uppercase font-label">Device ID (MAC)</th>
+                            <th class="px-8 py-6 text-[11px] font-bold text-secondary dark:text-gray-400 tracking-widest uppercase font-label">Device ID</th>
                             <th class="px-8 py-6 text-[11px] font-bold text-secondary dark:text-gray-400 tracking-widest uppercase font-label">Nama Perangkat</th>
                             <th class="px-8 py-6 text-[11px] font-bold text-secondary dark:text-gray-400 tracking-widest uppercase font-label">Lokasi / Ruangan</th>
                             <th class="px-8 py-6 text-[11px] font-bold text-secondary dark:text-gray-400 tracking-widest uppercase font-label">API Key</th>

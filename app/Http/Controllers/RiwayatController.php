@@ -16,44 +16,9 @@ class RiwayatController extends Controller
     }
 
     // 2. Fungsi untuk Web Dashboard (Ambil data real-time via AJAX JSON)
-    public function getData()
+    public function getData(Request $request)
     {
-        // Ambil 10 data terbaru
-        $data = Riwayat::orderBy('created_at', 'desc')->take(10)->get();
-
-        $formattedData = $data->map(function ($item) {
-            return [
-                'tanggal' => \Carbon\Carbon::parse($item->created_at)->translatedFormat('d M Y'),
-                'waktu'   => \Carbon\Carbon::parse($item->created_at)->format('H:i') . ' WIB',
-
-                'device'  => $item->device_id,
-
-                'aksi'    => $item->trigger_aksi,
-                'status'  => strtolower($item->status)
-            ];
-        });
-
-        return response()->json($formattedData);
-    }
-
-    // 3. Fungsi untuk alat ESP32 (Menerima Laporan masuk via HTTP POST JSON)
-    public function storeApi(Request $request)
-    {
-        $riwayat = Riwayat::create([
-            'device_id' => $request->device_id ?? '01',
-            'trigger_aksi' => $request->trigger_aksi,
-            'status' => $request->status,
-            'sisa_parfum_ml' => $request->sisa_parfum_ml ?? 0
-        ]);
-
-        return response()->json(['status' => 'success', 'message' => 'Laporan dari ESP32 berhasil dicatat!']);
-    }
-
-    // 4. Logika untuk mencetak PDF (Sekarang menggunakan data asli dari Database)
-    // 4. Logika untuk mencetak PDF (Sesuai Filter)
-    public function exportPdf(Request $request)
-    {
-        $query = Riwayat::orderBy('created_at', 'desc');
+        $query = Riwayat::query();
 
         // A. Cek Filter Perangkat
         if ($request->filled('device') && $request->device !== 'semua') {
@@ -68,33 +33,77 @@ class RiwayatController extends Controller
         // C. Cek Filter Waktu
         if ($request->filled('waktu') && $request->waktu !== 'semua') {
             $waktu = $request->waktu;
-            $today = \Carbon\Carbon::today();
 
             if ($waktu === '7_hari') {
-                $query->where('created_at', '>=', $today->copy()->subDays(7));
-            } elseif ($waktu === '30_hari') {
-                $query->where('created_at', '>=', $today->copy()->subDays(30));
+                // Ambil dari 7 hari yang lalu
+                $batasTanggal = \Carbon\Carbon::today()->subDays(7)->toDateString();
+                $query->whereDate('created_at', '>=', $batasTanggal);
             } elseif ($waktu === 'bulan_ini') {
-                $query->whereMonth('created_at', $today->month)
-                    ->whereYear('created_at', $today->year);
+                // Mengunci data HANYA untuk bulan dan tahun saat ini
+                $query->whereMonth('created_at', \Carbon\Carbon::now()->month)
+                    ->whereYear('created_at', \Carbon\Carbon::now()->year);
             } elseif ($waktu === 'kustom') {
+                // Menggunakan whereDate agar jam/menit/detik diabaikan
                 if ($request->filled('start')) {
-                    $query->where('created_at', '>=', $request->start . ' 00:00:00');
+                    $query->whereDate('created_at', '>=', $request->start);
                 }
                 if ($request->filled('end')) {
-                    $query->where('created_at', '<=', $request->end . ' 23:59:59');
+                    $query->whereDate('created_at', '<=', $request->end);
                 }
             }
         }
 
-        // Ambil data yang sudah disaring
+        // Ambil 50 data terbaru dari hasil filter
+        $data = $query->orderBy('created_at', 'desc')->take(50)->get();
+
+        $formattedData = $data->map(function ($item) {
+            return [
+                'tanggal' => \Carbon\Carbon::parse($item->created_at)->translatedFormat('d M Y'),
+                'waktu'   => \Carbon\Carbon::parse($item->created_at)->format('H:i') . ' WIB',
+                'device'  => $item->device_id,
+                'aksi'    => $item->trigger_aksi,
+                'status'  => strtolower($item->status)
+            ];
+        });
+
+        return response()->json($formattedData);
+    }
+
+    // 4. Logika untuk mencetak PDF (Sesuai Filter)
+    public function exportPdf(Request $request)
+    {
+        $query = Riwayat::orderBy('created_at', 'desc');
+
+        if ($request->filled('device') && $request->device !== 'semua') {
+            $query->where('device_id', $request->device);
+        }
+
+        if ($request->filled('status') && $request->status !== 'Semua') {
+            $query->where('status', strtolower($request->status));
+        }
+
+        if ($request->filled('waktu') && $request->waktu !== 'semua') {
+            $waktu = $request->waktu;
+
+            if ($waktu === '7_hari') {
+                $batasTanggal = \Carbon\Carbon::today()->subDays(7)->toDateString();
+                $query->whereDate('created_at', '>=', $batasTanggal);
+            } elseif ($waktu === 'kustom') {
+                if ($request->filled('start')) {
+                    $query->whereDate('created_at', '>=', $request->start);
+                }
+                if ($request->filled('end')) {
+                    $query->whereDate('created_at', '<=', $request->end);
+                }
+            }
+        }
+
+        // PDF mengekspor seluruh data yang tersaring (tanpa batasan 50)
         $dataRiwayat = $query->get();
 
-        // Load view PDF dan kirim datanya
         $pdf = Pdf::loadView('riwayat-pdf', compact('dataRiwayat'));
         $pdf->setPaper('A4', 'portrait');
 
-        // Mengunduh file PDF
         return $pdf->download('Laporan_Riwayat_Penyemprotan.pdf');
     }
 

@@ -66,7 +66,6 @@
                     <select id="filter-waktu" class="w-full pl-12 pr-4 py-3 bg-surface-container-lowest dark:bg-[#181c20] rounded-full border-none text-sm font-semibold text-on-surface dark:text-gray-200 shadow-sm dark:shadow-none focus:ring-2 focus:ring-emerald-500/50 appearance-none transition-colors duration-300">
                         <option value="semua">Semua Waktu</option>
                         <option value="7_hari">7 Hari Terakhir</option>
-                        <option value="30_hari">30 Hari Terakhir</option>
                         <option value="bulan_ini">Bulan Ini</option>
                         <option value="kustom">Pilih Tanggal Kustom</option>
                     </select>
@@ -158,15 +157,13 @@
 
         let currentStatusFilter = 'Semua';
 
-        // ---- 1. LOGIKA TOMBOL STATUS (SEMUA/BERHASIL/GAGAL) ----
+        // ---- 1. LOGIKA TOMBOL STATUS ----
         statusBtns.forEach(btn => {
             btn.addEventListener('click', (e) => {
-                // Reset semua tombol ke warna abu-abu tidak aktif
                 statusBtns.forEach(b => {
                     b.className = "status-btn px-6 py-2 rounded-full text-sm font-bold text-on-surface-variant dark:text-gray-500 hover:text-on-surface dark:hover:text-gray-300 transition-colors whitespace-nowrap";
                 });
                 
-                // Beri warna utama pada tombol yang diklik
                 e.currentTarget.className = "status-btn px-6 py-2 rounded-full text-sm font-bold bg-surface-container-lowest dark:bg-[#111417] shadow-sm text-primary dark:text-emerald-400 transition-colors whitespace-nowrap";
                 
                 currentStatusFilter = e.currentTarget.innerText.trim();
@@ -187,114 +184,49 @@
         customStart.addEventListener('change', applyFilters);
         customEnd.addEventListener('change', applyFilters);
 
-        function parseIndoDate(dateStr) {
-            const months = {
-                'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'Mei': 4, 'Jun': 5,
-                'Jul': 6, 'Agu': 7, 'Sep': 8, 'Okt': 9, 'Nov': 10, 'Des': 11
-            };
-            const parts = dateStr.trim().split(' ');
-            if(parts.length === 3) {
-                return new Date(parseInt(parts[2]), months[parts[1]], parseInt(parts[0]));
-            }
-            return new Date(0); 
+        // ---- 3. FUNGSI PEMICU (Jalankan Fetch & Update PDF) ----
+        function applyFilters() {
+            updatePdfLink();
+            fetchRiwayatRealtime(); // Langsung ambil ulang data dari server sesuai filter
         }
 
-        // ---- 3. FUNGSI UTAMA PENYARINGAN TABEL ----
-        function applyFilters() {
-            const trs = tbody.querySelectorAll('tr');
-            const timeFilter = filterWaktu.value;
-            const deviceFilterValue = filterDevice.value; 
-            const now = new Date();
-            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-            let visibleCount = 0;
-            const totalCount = trs.length;
-
-            trs.forEach(tr => {
-                if(tr.cells.length < 5) return;
-
-                const dateStr = tr.cells[0].innerText.trim();
-                const deviceStr = tr.cells[2].innerText.trim(); 
-                const statusStr = tr.cells[4].innerText.trim(); 
-
-                // Cek Filter Status
-                let statusMatch = true;
-                if (currentStatusFilter !== 'Semua') {
-                    statusMatch = statusStr.includes(currentStatusFilter);
-                }
-
-                // Cek Filter Perangkat
-                let deviceMatch = true;
-                if (deviceFilterValue !== 'semua') {
-                    deviceMatch = (deviceStr === deviceFilterValue);
-                }
-
-                // Cek Filter Waktu
-                let timeMatch = true;
-                const rowDate = parseIndoDate(dateStr);
-
-                if (timeFilter === '7_hari') {
-                    const past = new Date(today);
-                    past.setDate(today.getDate() - 7);
-                    timeMatch = rowDate >= past && rowDate <= now;
-                } else if (timeFilter === '30_hari') {
-                    const past = new Date(today);
-                    past.setDate(today.getDate() - 30);
-                    timeMatch = rowDate >= past && rowDate <= now;
-                } else if (timeFilter === 'bulan_ini') {
-                    timeMatch = rowDate.getMonth() === now.getMonth() && rowDate.getFullYear() === now.getFullYear();
-                } else if (timeFilter === 'kustom') {
-                    const s = customStart.value ? new Date(customStart.value) : null;
-                    const e = customEnd.value ? new Date(customEnd.value) : null;
-                    if (s) s.setHours(0,0,0,0);
-                    if (e) e.setHours(23,59,59,999);
-                    
-                    if (s && rowDate < s) timeMatch = false;
-                    if (e && rowDate > e) timeMatch = false;
-                }
-
-                // Tampilkan jika lolos semua filter
-                if (statusMatch && timeMatch && deviceMatch) {
-                    tr.style.display = '';
-                    visibleCount++;
-                } else {
-                    tr.style.display = 'none';
-                }
-            });
-
-            if (entryInfo) {
-                entryInfo.innerText = `Menampilkan ${visibleCount} dari ${totalCount} entri`;
-            }
-
-            // =========================================================
-            // UPDATE OTOMATIS LINK EKSPOR PDF AGAR SESUAI DENGAN FILTER
-            // =========================================================
+        // ---- 4. UPDATE LINK PDF ----
+        function updatePdfLink() {
             const pdfBtn = document.getElementById('btn-export-pdf');
             if (pdfBtn) {
                 let baseUrl = "{{ route('riwayat.export_pdf') }}";
                 let params = new URLSearchParams();
                 
-                // Masukkan parameter ke dalam link
                 if (currentStatusFilter !== 'Semua') params.append('status', currentStatusFilter);
-                if (deviceFilterValue !== 'semua') params.append('device', deviceFilterValue);
-                if (timeFilter !== 'semua') {
-                    params.append('waktu', timeFilter);
-                    if (timeFilter === 'kustom') {
+                if (filterDevice.value !== 'semua') params.append('device', filterDevice.value);
+                if (filterWaktu.value !== 'semua') {
+                    params.append('waktu', filterWaktu.value);
+                    if (filterWaktu.value === 'kustom') {
                         if (customStart.value) params.append('start', customStart.value);
                         if (customEnd.value) params.append('end', customEnd.value);
                     }
                 }
-                
-                // Terapkan ke tombol
                 pdfBtn.href = baseUrl + '?' + params.toString();
             }
         }
 
-        // ==============================================
-        // SCRIPT REALTIME DATA DARI SERVER (AJAX POLLING)
-        // ==============================================
+        // ---- 5. AMBIL DATA DARI BACKEND BERDASARKAN FILTER ----
         function fetchRiwayatRealtime() {
-            fetch('/api/get-riwayat')
+            let params = new URLSearchParams();
+            
+            // Masukkan semua nilai filter ke URL API
+            if (currentStatusFilter !== 'Semua') params.append('status', currentStatusFilter);
+            if (filterDevice.value !== 'semua') params.append('device', filterDevice.value);
+            if (filterWaktu.value !== 'semua') {
+                params.append('waktu', filterWaktu.value);
+                if (filterWaktu.value === 'kustom') {
+                    if (customStart.value) params.append('start', customStart.value);
+                    if (customEnd.value) params.append('end', customEnd.value);
+                }
+            }
+
+            // Panggil API dengan parameter (Contoh: /api/get-riwayat?waktu=kustom&start=2026-05-12)
+            fetch('/api/get-riwayat?' + params.toString())
                 .then(response => response.json())
                 .then(data => {
                     let htmlRows = '';
@@ -302,19 +234,23 @@
                     let countGagal = 0;
 
                     if (data.length === 0) {
-                        tbody.innerHTML = `<tr><td colspan="5" class="px-8 py-6 text-center text-sm text-on-surface-variant">Belum ada data riwayat penyemprotan.</td></tr>`;
+                        tbody.innerHTML = `<tr><td colspan="5" class="px-8 py-6 text-center text-sm text-on-surface-variant font-bold text-tertiary">Belum ada data riwayat untuk filter ini.</td></tr>`;
+                        document.getElementById('stat-total').innerText = 0;
+                        document.getElementById('stat-sukses').innerText = 0;
+                        document.getElementById('stat-gagal').innerText = 0;
+                        if (entryInfo) entryInfo.innerText = `Menampilkan 0 dari 0 entri`;
                         return;
                     }
 
-                    // --- UPDATE ISI DROPDOWN FILTER PERANGKAT SECARA OTOMATIS ---
-                    const currentDeviceSelection = filterDevice.value;
-                    let uniqueDevices = [...new Set(data.map(item => item.device || item.device_id || 'Alat-01'))];
-                    let deviceOptions = '<option value="semua">Semua Perangkat</option>';
-                    uniqueDevices.forEach(dev => {
-                        deviceOptions += `<option value="${dev}" ${currentDeviceSelection === dev ? 'selected' : ''}>${dev}</option>`;
-                    });
-                    filterDevice.innerHTML = deviceOptions;
-                    // -----------------------------------------------------------
+                    // Hanya update opsi perangkat JIKA filter sedang 'semua' (agar dropdown tidak tertimpa)
+                    if (filterDevice.value === 'semua') {
+                        let uniqueDevices = [...new Set(data.map(item => item.device || item.device_id || 'Alat-01'))];
+                        let deviceOptions = '<option value="semua">Semua Perangkat</option>';
+                        uniqueDevices.forEach(dev => {
+                            deviceOptions += `<option value="${dev}">${dev}</option>`;
+                        });
+                        filterDevice.innerHTML = deviceOptions;
+                    }
 
                     data.forEach(item => {
                         let aksiColor = 'bg-secondary-container/20 text-on-secondary-container dark:bg-blue-500/10 dark:text-blue-400';
@@ -354,16 +290,23 @@
 
                     tbody.innerHTML = htmlRows;
                     
+                    // Update Statistik Atas
                     document.getElementById('stat-total').innerText = data.length;
                     document.getElementById('stat-sukses').innerText = countSukses;
                     document.getElementById('stat-gagal').innerText = countGagal;
 
-                    applyFilters();
+                    // Update tulisan Pagination Bawah
+                    if (entryInfo) {
+                        entryInfo.innerText = `Menampilkan ${data.length} entri`;
+                    }
                 })
                 .catch(error => console.error('Gagal mengambil data:', error));
         }
 
-        fetchRiwayatRealtime();
+        // Panggil saat pertama kali load web
+        applyFilters();
+        
+        // Refresh otomatis setiap 3 detik (menggunakan filter yang sedang aktif)
         setInterval(fetchRiwayatRealtime, 3000);
     });
 </script>
