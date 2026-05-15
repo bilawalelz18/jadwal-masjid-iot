@@ -12,7 +12,6 @@
         </div>
     </div>
 
-    <!-- FILTER PERANGKAT DROPDOWN -->
     <div class="bg-surface-container-lowest dark:bg-[#111417] border border-transparent dark:border-white/5 p-4 rounded-xl mb-6 flex flex-wrap gap-4 justify-between items-center transition-colors shadow-sm">
         <div class="flex items-center gap-3">
             <div class="p-2 bg-primary/10 dark:bg-emerald-500/10 rounded-lg text-primary dark:text-emerald-400">
@@ -22,15 +21,23 @@
         </div>
         <div class="relative w-full md:w-auto">
             <span class="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant dark:text-gray-400 material-symbols-outlined text-sm">router</span>
+            
             <select id="dashboard-device-filter" class="w-full md:w-64 pl-10 pr-4 py-2 bg-surface-container-low dark:bg-[#181c20] rounded-full border-none text-sm font-semibold text-on-surface dark:text-gray-200 focus:ring-2 focus:ring-emerald-500/50 appearance-none transition-colors shadow-sm cursor-pointer">
-                <option value="">Memuat perangkat...</option>
+                @if(isset($devices) && $devices->count() > 0)
+                    @foreach($devices as $device)
+                        <option value="{{ $device->device_id }}">
+                            {{ $device->nama_perangkat }} ({{ $device->room ? $device->room->nama_ruangan : 'Area Luar' }})
+                        </option>
+                    @endforeach
+                @else
+                    <option value="">Belum ada perangkat terdaftar</option>
+                @endif
             </select>
+
         </div>
     </div>
 
-    <!-- KARTU STATISTIK -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <!-- Kartu 1: Sisa Cairan -->
         <div class="bg-surface-container-lowest dark:bg-[#111417] border border-transparent dark:border-white/5 p-8 rounded-xl transition-colors flex flex-col items-center justify-center text-center relative overflow-hidden group">
             <div class="absolute top-0 left-0 p-4 opacity-100 group-hover:opacity-90 transition-opacity">
                 <div class="relative flex items-center justify-center w-16 h-16 rounded-full bg-primary-container/20 dark:bg-emerald-500/10 border border-primary-container/30 dark:border-emerald-500/20 shadow-sm">
@@ -51,7 +58,6 @@
             <p id="desc-sisa-cairan" class="text-xs text-outline dark:text-gray-500 font-medium">Berdasarkan pemakaian alat</p>
         </div>
 
-        <!-- Kartu 2: Status Alat -->
         <div class="bg-surface-container-lowest dark:bg-[#111417] border border-transparent dark:border-white/5 p-8 rounded-xl flex flex-col justify-between transition-colors">
             <div class="flex justify-between items-start">
                 <div class="bg-primary/10 dark:bg-emerald-500/10 p-3 rounded-full text-primary dark:text-emerald-400">
@@ -67,12 +73,10 @@
             <div>
                 <h3 class="text-sm font-semibold text-secondary mb-1">Status Alat</h3>
                 <p id="text-status-alat" class="text-2xl font-bold text-on-surface dark:text-gray-100">Memeriksa...</p>
-                <!-- Teks State Condition (Memindai / Ping ms / Terputus) -->
                 <p id="desc-status-alat" class="text-xs text-outline dark:text-gray-500 mt-2">Memindai sinyal perangkat...</p>
             </div>
         </div>
 
-        <!-- Kartu 3: Penyemprotan Berikutnya -->
         <div class="bg-surface-container-lowest dark:bg-[#111417] border border-transparent dark:border-white/5 p-8 rounded-xl flex flex-col justify-between transition-colors">
             <div class="flex justify-between items-start">
                 <div class="bg-amber-100 dark:bg-amber-500/10 p-3 rounded-full text-amber-600 dark:text-amber-400">
@@ -88,7 +92,6 @@
         </div>
     </div>
 
-    <!-- GRAFIK REALTIME -->
     <div class="bg-surface-container-lowest dark:bg-[#111417] p-8 rounded-xl mb-8 shadow-sm border border-slate-100 dark:border-white/5 transition-colors">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
             <div>
@@ -108,7 +111,6 @@
         </div>
     </div>
 
-    <!-- TABEL RIWAYAT REALTIME (HANYA 4 TERBARU) -->
     <div class="bg-surface-container-lowest dark:bg-[#111417] border border-transparent dark:border-white/5 rounded-xl overflow-hidden transition-colors shadow-sm">
         <div class="overflow-x-auto">
             <table class="w-full text-left">
@@ -146,7 +148,7 @@
             setInterval(updateClock, 1000);
             updateClock();
 
-            // 2. SETUP GRAFIK CHART.JS (Hari paten: Senin s/d Minggu)
+            // 2. SETUP GRAFIK CHART.JS
             const ctx = document.getElementById('sprayChart').getContext('2d');
             const isDark = document.documentElement.classList.contains('dark');
             const textColor = isDark ? '#9ca3af' : '#6c7a71'; 
@@ -182,38 +184,25 @@
                 }
             });
 
-            // 3. FUNGSI MENGAMBIL DATA RIWAYAT DAN UPDATE DROPDOWN
+            // 3. FUNGSI MENGAMBIL DATA RIWAYAT (SUDAH DIPERBAIKI)
             const deviceFilter = document.getElementById('dashboard-device-filter');
             const tbody = document.getElementById('dashboard-riwayat-tbody');
 
             function fetchDashboardData() {
-                fetch('/api/get-riwayat')
+                let currentSelection = deviceFilter.value;
+                
+                // Jika tidak ada alat terdaftar, hentikan pencarian
+                if (!currentSelection) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="px-8 py-6 text-center text-sm text-on-surface-variant">Belum ada perangkat yang ditambahkan ke sistem.</td></tr>`;
+                    return;
+                }
+
+                // Ambil data dari server khusus untuk alat yang dipilih di dropdown
+                fetch(`/api/get-riwayat?device=${currentSelection}`)
                     .then(response => response.json())
                     .then(data => {
-                        let uniqueDevices = [...new Set(data.map(item => item.device || item.device_id || 'Alat-01'))];
-                        
-                        let currentSelection = deviceFilter.value;
-                        
-                        if (!currentSelection || !uniqueDevices.includes(currentSelection)) {
-                            currentSelection = uniqueDevices.length > 0 ? uniqueDevices[0] : 'Alat-01'; 
-                        }
-
-                        let optionsHtml = '';
-                        uniqueDevices.forEach(dev => {
-                            optionsHtml += `<option value="${dev}" ${currentSelection === dev ? 'selected' : ''}>${dev}</option>`;
-                        });
-                        
-                        if (uniqueDevices.length === 0) {
-                            optionsHtml = '<option value="">Belum ada perangkat terdaftar</option>';
-                        }
-                        
-                        deviceFilter.innerHTML = optionsHtml;
-
-                        let filteredData = data.filter(item => (item.device || item.device_id || 'Alat-01') === currentSelection);
-
-                        // Ambil maksimal 4 baris terbaru untuk tabel dashboard
                         let htmlRows = '';
-                        const top4Data = filteredData.slice(0, 4); 
+                        const top4Data = data.slice(0, 4); 
 
                         if (top4Data.length === 0) {
                             tbody.innerHTML = `<tr><td colspan="5" class="px-8 py-6 text-center text-sm text-on-surface-variant">Belum ada data riwayat untuk perangkat ini.</td></tr>`;
@@ -226,7 +215,7 @@
                                     ? `<span class="flex items-center gap-2 text-xs font-bold text-primary dark:text-emerald-400"><span class="h-2 w-2 rounded-full bg-primary dark:bg-emerald-400"></span>Berhasil</span>`
                                     : `<span class="flex items-center gap-2 text-xs font-bold text-tertiary dark:text-red-400"><span class="h-2 w-2 rounded-full bg-tertiary dark:bg-red-400"></span>Gagal</span>`;
 
-                                let deviceName = item.device || item.device_id || 'Alat-01';
+                                let deviceName = item.device || item.device_id || currentSelection;
 
                                 htmlRows += `
                                     <tr class="hover:bg-surface-container-low dark:hover:bg-white/5 transition-colors">
@@ -240,12 +229,13 @@
                             tbody.innerHTML = htmlRows;
                         }
 
+                        // Setelah tabel terisi, update data statistik untuk alat tersebut
                         fetchDashboardStats(currentSelection);
                     })
                     .catch(err => console.error("Gagal load riwayat:", err));
             }
 
-            // 4. FUNGSI MENGAMBIL DATA STATISTIK KARTU & GRAFIK UNTUK SPESIFIK DEVICE
+            // 4. FUNGSI MENGAMBIL DATA STATISTIK KARTU & GRAFIK
             function fetchDashboardStats(selectedDevice) {
                 if (!selectedDevice) return; 
 
@@ -260,34 +250,28 @@
                         const offset = 351.85 - (351.85 * (data.sisa_persen / 100));
                         document.getElementById('circle-sisa-cairan').style.strokeDashoffset = offset;
                         
-                        // KARTU STATUS ALAT & LOGIKA STATE CONDITION
+                        // KARTU STATUS ALAT
                         const isOnline = data.is_online;
-                        
                         document.getElementById('text-status-alat').innerText = isOnline ? 'Terhubung' : 'Terputus';
                         document.getElementById('badge-status-alat').className = isOnline ? 'flex items-center gap-2 px-3 py-1 bg-primary/10 dark:bg-emerald-500/10 rounded-full' : 'flex items-center gap-2 px-3 py-1 bg-tertiary/10 dark:bg-red-500/10 rounded-full';
                         document.getElementById('text-badge-status').className = isOnline ? 'text-[10px] font-bold text-primary dark:text-emerald-400 uppercase' : 'text-[10px] font-bold text-tertiary dark:text-red-400 uppercase';
                         document.getElementById('text-badge-status').innerText = isOnline ? 'ONLINE' : 'OFFLINE';
 
-                        // Memanipulasi teks deskripsi status
                         if (isOnline) {
-                            // Menghasilkan angka ping acak antara 12ms hingga 45ms agar terasa nyata
                             let fakePing = Math.floor(Math.random() * (45 - 12 + 1)) + 12;
                             document.getElementById('desc-status-alat').innerText = `Koneksi stabil (Sinyal: ${fakePing}ms)`;
                         } else {
                             document.getElementById('desc-status-alat').innerText = `Sinyal terputus`;
                         }
 
-                        // GRAFIK
                         // GRAFIK MINGGUAN
                         if(data.chart_data) {
-                            // Karena dari backend sudah urut Senin - Minggu, langsung masukkan saja
                             sprayChart.data.datasets[0].data = data.chart_data;
                             sprayChart.update();
                         }
                     })
                     .catch(err => {
-                        console.error("Menunggu endpoint backend siap", err);
-                        // Fallback jika API error: Kembalikan state menjadi Offline
+                        console.error("Gagal update stats:", err);
                         document.getElementById('text-status-alat').innerText = 'Terputus';
                         document.getElementById('desc-status-alat').innerText = 'Sinyal terputus';
                         document.getElementById('badge-status-alat').className = 'flex items-center gap-2 px-3 py-1 bg-tertiary/10 dark:bg-red-500/10 rounded-full';
@@ -299,13 +283,16 @@
             // Jalankan saat pertama dibuka
             fetchDashboardData();
             
-            // State: Saat pindah Dropdown Device, ubah status ke Loading
+            // State: Saat pindah Dropdown Device, ubah status ke Loading & Refresh Tabel
             deviceFilter.addEventListener('change', () => {
                 document.getElementById('text-status-alat').innerText = 'Memeriksa...';
                 document.getElementById('desc-status-alat').innerText = 'Memindai sinyal perangkat...';
                 document.getElementById('badge-status-alat').className = 'flex items-center gap-2 px-3 py-1 bg-gray-500/10 rounded-full';
                 document.getElementById('text-badge-status').className = 'text-[10px] font-bold text-gray-500 uppercase';
                 document.getElementById('text-badge-status').innerText = 'MEMUAT';
+                
+                // Tambahkan efek loading pada tabel
+                tbody.innerHTML = '<tr><td colspan="5" class="px-8 py-6 text-center text-sm text-on-surface-variant">Memuat data...</td></tr>';
                 
                 fetchDashboardData();
             });

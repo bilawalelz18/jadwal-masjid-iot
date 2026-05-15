@@ -5,6 +5,7 @@ use App\Http\Controllers\JadwalSholatController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\RiwayatController;
 use App\Http\Controllers\DeviceController;
+use App\Http\Controllers\KontrolController;
 use App\Models\Device;
 use App\Models\Notifikasi;
 
@@ -21,17 +22,23 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     Route::get('/', function () {
-        return view('dashboard');
+        // Ambil data perangkat dari database untuk dikirim ke dropdown dashboard
+        $devices = \App\Models\Device::with('room')->get();
+
+        return view('dashboard', compact('devices'));
     })->name('dashboard');
 
-    Route::get('/kontrol-manual', function () {
-        // Ambil data perangkat dari database untuk mengisi dropdown
-        $devices = Device::with('room')->get();
-        return view('kontrol-manual', compact('devices'));
-    })->name('kontrol.manual');
+    // Rute Kontrol Manual
+    Route::get('/kontrol-manual', [KontrolController::class, 'index'])->name('kontrol.manual');
+    Route::post('/kontrol-manual/spray', [DeviceController::class, 'spray'])->name('kontrol.spray');
+    Route::get('/kontrol-manual/api/device-data', [KontrolController::class, 'getDeviceData'])->name('kontrol.device_data');
 
-    // Rute Riwayat & Cetak PDF
-    Route::get('/riwayat', [RiwayatController::class, 'index'])->name('riwayat.index');
+    // Rute Riwayat & Cetak PDF (TELAH DIPERBARUI)
+    Route::get('/riwayat', function () {
+        $devices = \App\Models\Device::with('room')->get();
+        return view('riwayat', compact('devices'));
+    })->name('riwayat.index');
+
     Route::get('/riwayat/export-pdf', [RiwayatController::class, 'exportPdf'])->name('riwayat.export_pdf');
     Route::get('/api/get-riwayat', [RiwayatController::class, 'getData'])->name('riwayat.data');
 
@@ -41,7 +48,6 @@ Route::middleware('auth')->group(function () {
         $notifikasis = Notifikasi::latest()->paginate(5);
         return view('notifikasi', compact('notifikasis'));
     })->name('notifikasi.index');
-    Route::post('/kontrol-manual/spray', [App\Http\Controllers\DeviceController::class, 'spray'])->name('kontrol.spray');
 
     // Rute Jadwal
     Route::post('/jadwal/sync', [JadwalSholatController::class, 'sync'])->name('jadwal.sync');
@@ -60,6 +66,7 @@ Route::middleware('auth')->group(function () {
     Route::put('/pengaturan/update', [AuthController::class, 'updateProfile'])->name('pengaturan.update');
 });
 
+// --- RUTE PERANGKAT (DEVICES) ---
 Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
 Route::post('/devices', [DeviceController::class, 'store'])->name('devices.store');
 Route::delete('/devices/{id}', [DeviceController::class, 'destroy'])->name('devices.destroy');

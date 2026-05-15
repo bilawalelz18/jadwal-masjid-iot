@@ -7,7 +7,7 @@ use App\Models\Device;
 use App\Models\Room;
 use App\Models\Notifikasi;
 use Illuminate\Support\Str;
-use App\Models\Riwayat; 
+use App\Models\Riwayat;
 
 class DeviceController extends Controller
 {
@@ -95,7 +95,11 @@ class DeviceController extends Controller
             if ($device) {
                 $deviceName = $device->nama_perangkat;
 
-                // ---> TAMBAHAN: Catat ke tabel Riwayat untuk alat ini
+                // 1. TEKAN SAKLAR UNTUK ESP32
+                $device->perintah_semprot = 1;
+                $device->save();
+
+                // 2. Catat ke tabel Riwayat untuk alat ini
                 Riwayat::create([
                     'device_id' => $device->device_id,
                     'trigger_aksi' => 'manual',
@@ -104,11 +108,15 @@ class DeviceController extends Controller
                 ]);
             }
         } else {
-            // JIKA TARGETNYA 'ALL' (SEMUA ALAT)
+            // JIKA TARGETNYA 'ALL' (SEMUA ALAT / BROADCAST)
             $allDevices = Device::all();
 
-            // ---> TAMBAHAN: Looping & catat ke tabel Riwayat untuk SEMUA alat
             foreach ($allDevices as $dev) {
+                // 1. TEKAN SAKLAR UNTUK SETIAP ESP32
+                $dev->perintah_semprot = 1;
+                $dev->save();
+
+                // 2. Catat ke tabel Riwayat untuk setiap alat
                 Riwayat::create([
                     'device_id' => $dev->device_id,
                     'trigger_aksi' => 'manual',

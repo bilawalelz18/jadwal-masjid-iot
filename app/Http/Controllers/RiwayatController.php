@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
-use App\Models\Riwayat; // Tambahkan ini untuk memanggil tabel Riwayat
-use Carbon\Carbon;      // Tambahkan ini untuk memformat tanggal
+use App\Models\Riwayat;
+use Carbon\Carbon;
 
 class RiwayatController extends Controller
 {
@@ -18,7 +18,11 @@ class RiwayatController extends Controller
     // 2. Fungsi untuk Web Dashboard (Ambil data real-time via AJAX JSON)
     public function getData(Request $request)
     {
-        $query = Riwayat::query();
+        // 1. PURIFIKASI: Ambil list ID yang SAH dari tabel devices
+        $validDeviceIds = \App\Models\Device::pluck('device_id')->toArray();
+
+        // 2. Query riwayat HANYA untuk ID yang SAH
+        $query = Riwayat::whereIn('device_id', $validDeviceIds);
 
         // A. Cek Filter Perangkat
         if ($request->filled('device') && $request->device !== 'semua') {
@@ -35,15 +39,12 @@ class RiwayatController extends Controller
             $waktu = $request->waktu;
 
             if ($waktu === '7_hari') {
-                // Ambil dari 7 hari yang lalu
                 $batasTanggal = \Carbon\Carbon::today()->subDays(7)->toDateString();
                 $query->whereDate('created_at', '>=', $batasTanggal);
             } elseif ($waktu === 'bulan_ini') {
-                // Mengunci data HANYA untuk bulan dan tahun saat ini
                 $query->whereMonth('created_at', \Carbon\Carbon::now()->month)
                     ->whereYear('created_at', \Carbon\Carbon::now()->year);
             } elseif ($waktu === 'kustom') {
-                // Menggunakan whereDate agar jam/menit/detik diabaikan
                 if ($request->filled('start')) {
                     $query->whereDate('created_at', '>=', $request->start);
                 }
@@ -72,7 +73,11 @@ class RiwayatController extends Controller
     // 4. Logika untuk mencetak PDF (Sesuai Filter)
     public function exportPdf(Request $request)
     {
-        $query = Riwayat::orderBy('created_at', 'desc');
+        // 1. PURIFIKASI: Ambil list ID yang SAH dari tabel devices
+        $validDeviceIds = \App\Models\Device::pluck('device_id')->toArray();
+
+        // 2. Query riwayat HANYA untuk ID yang SAH
+        $query = Riwayat::whereIn('device_id', $validDeviceIds)->orderBy('created_at', 'desc');
 
         if ($request->filled('device') && $request->device !== 'semua') {
             $query->where('device_id', $request->device);
@@ -108,12 +113,16 @@ class RiwayatController extends Controller
     }
 
     // 5. Fungsi Mengambil Data Statistik untuk Dashboard
-    // 5. Fungsi Mengambil Data Statistik untuk Dashboard
     public function getDashboardStats(Request $request)
     {
         $device = $request->query('device', 'semua');
 
-        $query = Riwayat::query();
+        // 1. PURIFIKASI: Ambil list ID yang SAH
+        $validDeviceIds = \App\Models\Device::pluck('device_id')->toArray();
+
+        // 2. Query HANYA untuk ID yang SAH
+        $query = Riwayat::whereIn('device_id', $validDeviceIds);
+
         if ($device !== 'semua') {
             $query->where('device_id', $device);
         }
@@ -162,5 +171,136 @@ class RiwayatController extends Controller
             'sisa_persen' => $sisaPersen,
             'is_online'   => $isOnline
         ]);
+    }
+
+    // 6. Fungsi API untuk menerima data dari ESP32 (DENGAN KEAMANAN API KEY)
+    public function storeApi(Request $request)
+    {
+        try {
+            $request->validate([
+                'device_id'    => 'required',
+                'api_key'      => 'required',
+                'trigger_aksi' => 'required',
+                'status'       => 'required',
+            ]);
+
+            $device = \App\Models\Device::where('device_id', $request->device_id)
+                ->where('api_key', $request->api_key)
+                ->first();
+
+            if (!$device) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Akses Ditolak! Device ID tidak terdaftar atau API Key salah.'
+                ], 401);
+            }
+
+            $riwayat = new Riwayat();
+            $riwayat->device_id = $request->device_id;
+            $riwayat->trigger_aksi = $request->trigger_aksi;
+            $riwayat->status = $request->status;
+
+            if ($request->has('sisa_parfum_ml')) {
+                $riwayat->sisa_parfum_ml = $request->sisa_parfum_ml;
+            } else {
+                $riwayat->sisa_parfum_ml = 0;
+            }
+
+            $riwayat->save();
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Akses Diterima! Data riwayat berhasil disimpan.'
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Gagal menyimpan data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // 7. Fungsi API untuk ESP32: Cek Jadwal Sholat Terdekat (Multi-Ruangan)
+    public function getNextJadwal(Request $request)
+    {
+        $deviceId = $request->device_id;
+
+        if (!$deviceId) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Device ID tidak disertakan di URL!'
+            ], 400);
+        }
+
+        $device = \App\Models\Device::where('device_id', $deviceId)->first();
+
+        if (!$device) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Alat tidak terdaftar di sistem!'
+            ], 404);
+        }
+
+        $now = \Carbon\Carbon::now('Asia/Jakarta');
+        $jamSekarang = $now->format('H:i:s');
+        $tanggalHariIni = $now->format('Y-m-d');
+
+        $jadwalTerdekat = \App\Models\JadwalSholat::where('room_id', $device->room_id)
+            ->where(function ($query) use ($tanggalHariIni) {
+                $query->where('tanggal', $tanggalHariIni)
+                    ->orWhereNull('tanggal');
+            })
+            ->where('waktu', '>', $jamSekarang)
+            ->orderBy('waktu', 'asc')
+            ->first();
+
+        if (!$jadwalTerdekat) {
+            $besok = \Carbon\Carbon::tomorrow('Asia/Jakarta')->format('Y-m-d');
+
+            $jadwalTerdekat = \App\Models\JadwalSholat::where('room_id', $device->room_id)
+                ->where(function ($query) use ($besok) {
+                    $query->where('tanggal', $besok)
+                        ->orWhereNull('tanggal');
+                })
+                ->orderBy('waktu', 'asc')
+                ->first();
+        }
+
+        if ($jadwalTerdekat) {
+            $jamFormat = \Carbon\Carbon::parse($jadwalTerdekat->waktu)->format('H:i');
+
+            return response()->json([
+                'next_jadwal' => $jadwalTerdekat->nama_sholat,
+                'jam'         => $jamFormat,
+                'status'      => 'success'
+            ]);
+        } else {
+            return response()->json([
+                'next_jadwal' => '-',
+                'jam'         => '-',
+                'status'      => 'error',
+                'message'     => 'Belum ada data jadwal untuk ruangan ini.'
+            ], 404);
+        }
+    }
+
+    // 8. Fungsi API untuk ESP32 mengecek perintah manual
+    public function cekPerintah(Request $request)
+    {
+        $device = \App\Models\Device::where('device_id', $request->device_id)
+            ->where('api_key', $request->api_key)
+            ->first();
+
+        if (!$device) {
+            return response()->json(['perintah' => 'TOLAK', 'message' => 'Kunci Salah!'], 401);
+        }
+
+        if ($device->perintah_semprot == 1) {
+            $device->perintah_semprot = 0;
+            $device->save();
+            return response()->json(['perintah' => 'SEMPROT_SEKARANG']);
+        }
+
+        return response()->json(['perintah' => 'TUNGGU']);
     }
 }

@@ -59,7 +59,6 @@
     <div class="bg-surface-container-low dark:bg-[#111417] border border-transparent dark:border-white/5 p-6 rounded-lg transition-colors duration-300 mb-8 flex flex-wrap items-start justify-between gap-6">
         <div class="flex items-start gap-4 flex-1 min-w-[300px] flex-col lg:flex-row">
             
-            <!-- 1. FILTER WAKTU -->
             <div class="relative flex-1 w-full lg:w-auto flex flex-col">
                 <div class="relative w-full">
                     <span class="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant dark:text-gray-400 material-symbols-outlined">calendar_today</span>
@@ -78,18 +77,22 @@
                 </div>
             </div>
 
-            <!-- 2. FILTER PERANGKAT -->
             <div class="relative flex-1 w-full lg:w-auto flex flex-col">
                 <div class="relative w-full">
                     <span class="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant dark:text-gray-400 material-symbols-outlined">router</span>
                     <select id="filter-device" class="w-full pl-12 pr-4 py-3 bg-surface-container-lowest dark:bg-[#181c20] rounded-full border-none text-sm font-semibold text-on-surface dark:text-gray-200 shadow-sm dark:shadow-none focus:ring-2 focus:ring-emerald-500/50 appearance-none transition-colors duration-300">
                         <option value="semua">Semua Perangkat</option>
-                        <!-- Opsi perangkat akan diisi otomatis oleh Javascript -->
+                        @if(isset($devices) && $devices->count() > 0)
+                            @foreach($devices as $device)
+                                <option value="{{ $device->device_id }}">
+                                    {{ $device->nama_perangkat }} ({{ $device->room ? $device->room->nama_ruangan : 'Area Luar' }})
+                                </option>
+                            @endforeach
+                        @endif
                     </select>
                 </div>
             </div>
             
-            <!-- 3. FILTER STATUS -->
             <div class="flex bg-surface-container-highest dark:bg-[#181c20] p-1 rounded-full w-full lg:w-auto overflow-x-auto" id="filter-status-container">
                 <button type="button" class="status-btn px-6 py-2 rounded-full text-sm font-bold bg-surface-container-lowest dark:bg-[#111417] shadow-sm text-primary dark:text-emerald-400 transition-colors whitespace-nowrap">Semua</button>
                 <button type="button" class="status-btn px-6 py-2 rounded-full text-sm font-bold text-on-surface-variant dark:text-gray-500 hover:text-on-surface dark:hover:text-gray-300 transition-colors whitespace-nowrap">Berhasil</button>
@@ -97,7 +100,6 @@
             </div>
         </div>
         
-        <!-- TOMBOL EKSPOR PDF SEKARANG MENGARAH KE ROUTE BACKEND -->
         <a href="{{ route('riwayat.export_pdf') }}" id="btn-export-pdf" class="jewel-gradient px-8 py-3 rounded-full text-white font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-lg shadow-primary/20 mt-1">
             <span class="material-symbols-outlined text-sm">download</span>
             Ekspor PDF
@@ -118,8 +120,7 @@
                     </tr>
                 </thead>
                 <tbody id="riwayat-tbody" class="divide-y divide-surface-container-low dark:divide-white/5">
-                   <!-- Nanti dikosongkan karena data akan diisi oleh Javascript -->
-                </tbody>
+                   </tbody>
             </table>
         </div>
 
@@ -184,10 +185,10 @@
         customStart.addEventListener('change', applyFilters);
         customEnd.addEventListener('change', applyFilters);
 
-        // ---- 3. FUNGSI PEMICU (Jalankan Fetch & Update PDF) ----
+        // ---- 3. FUNGSI PEMICU ----
         function applyFilters() {
             updatePdfLink();
-            fetchRiwayatRealtime(); // Langsung ambil ulang data dari server sesuai filter
+            fetchRiwayatRealtime(); 
         }
 
         // ---- 4. UPDATE LINK PDF ----
@@ -214,7 +215,6 @@
         function fetchRiwayatRealtime() {
             let params = new URLSearchParams();
             
-            // Masukkan semua nilai filter ke URL API
             if (currentStatusFilter !== 'Semua') params.append('status', currentStatusFilter);
             if (filterDevice.value !== 'semua') params.append('device', filterDevice.value);
             if (filterWaktu.value !== 'semua') {
@@ -225,7 +225,6 @@
                 }
             }
 
-            // Panggil API dengan parameter (Contoh: /api/get-riwayat?waktu=kustom&start=2026-05-12)
             fetch('/api/get-riwayat?' + params.toString())
                 .then(response => response.json())
                 .then(data => {
@@ -240,16 +239,6 @@
                         document.getElementById('stat-gagal').innerText = 0;
                         if (entryInfo) entryInfo.innerText = `Menampilkan 0 dari 0 entri`;
                         return;
-                    }
-
-                    // Hanya update opsi perangkat JIKA filter sedang 'semua' (agar dropdown tidak tertimpa)
-                    if (filterDevice.value === 'semua') {
-                        let uniqueDevices = [...new Set(data.map(item => item.device || item.device_id || 'Alat-01'))];
-                        let deviceOptions = '<option value="semua">Semua Perangkat</option>';
-                        uniqueDevices.forEach(dev => {
-                            deviceOptions += `<option value="${dev}">${dev}</option>`;
-                        });
-                        filterDevice.innerHTML = deviceOptions;
                     }
 
                     data.forEach(item => {
@@ -290,12 +279,10 @@
 
                     tbody.innerHTML = htmlRows;
                     
-                    // Update Statistik Atas
                     document.getElementById('stat-total').innerText = data.length;
                     document.getElementById('stat-sukses').innerText = countSukses;
                     document.getElementById('stat-gagal').innerText = countGagal;
 
-                    // Update tulisan Pagination Bawah
                     if (entryInfo) {
                         entryInfo.innerText = `Menampilkan ${data.length} entri`;
                     }
@@ -303,10 +290,8 @@
                 .catch(error => console.error('Gagal mengambil data:', error));
         }
 
-        // Panggil saat pertama kali load web
         applyFilters();
         
-        // Refresh otomatis setiap 3 detik (menggunakan filter yang sedang aktif)
         setInterval(fetchRiwayatRealtime, 3000);
     });
 </script>

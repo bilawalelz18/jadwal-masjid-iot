@@ -200,10 +200,49 @@
         function closeAddDeviceModal() {
             document.getElementById('addDeviceModal').classList.add('hidden');
         }
+
+        // --- FUNGSI COPY API KEY TERBARU DENGAN NOTIFIKASI TOAST ---
         function copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(() => {
-                alert('API Key berhasil disalin: ' + text);
+                showThemeNotification('API Key berhasil disalin ke clipboard!');
+            }).catch(function(err) {
+                console.error('Gagal menyalin: ', err);
+                showThemeNotification('Gagal menyalin API Key.', 'error');
             });
+        }
+
+        // --- FUNGSI MEMBUAT NOTIFIKASI TEMA GLASSMORPHISM ---
+        function showThemeNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            
+            notification.className = 'fixed top-24 right-8 z-[100] bg-surface-container-lowest dark:bg-[#111417] rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.15)] border border-primary/20 dark:border-emerald-500/20 p-4 transform transition-all duration-300 translate-x-20 opacity-0 flex items-center gap-3 backdrop-blur-md';
+            
+            const icon = type === 'success' ? 'content_copy' : 'error';
+            const iconColor = type === 'success' ? 'text-primary dark:text-emerald-400' : 'text-tertiary dark:text-red-400';
+            const bgIconColor = type === 'success' ? 'bg-primary/10 dark:bg-emerald-500/10' : 'bg-tertiary/10 dark:bg-red-500/10';
+
+            notification.innerHTML = `
+                <div class="flex items-center justify-center h-10 w-10 rounded-full ${bgIconColor}">
+                    <span class="material-symbols-outlined ${iconColor} text-xl">${icon}</span>
+                </div>
+                <div>
+                    <p class="text-sm font-bold text-on-surface dark:text-gray-100">${message}</p>
+                    <p class="text-[10px] text-secondary dark:text-gray-400 font-medium">API Key siap digunakan pada konfigurasi perangkat.</p>
+                </div>
+            `;
+
+            document.body.appendChild(notification);
+
+            // Trigger animasi masuk (Slide in)
+            setTimeout(() => {
+                notification.classList.remove('translate-x-20', 'opacity-0');
+            }, 10);
+
+            // Hapus pop-up secara otomatis setelah 3 detik (Slide out)
+            setTimeout(() => {
+                notification.classList.add('translate-x-20', 'opacity-0');
+                setTimeout(() => notification.remove(), 300); // Tunggu animasi selesai baru dihapus dari HTML
+            }, 3000);
         }
     </script>
 @endsection
